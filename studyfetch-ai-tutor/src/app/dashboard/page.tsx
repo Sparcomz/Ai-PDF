@@ -4,13 +4,12 @@ import { useState, useEffect } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
+import { extractTextFromPDF } from "@/lib/pdf"; // <--- make sure this exists
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 
-pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-  "pdfjs-dist/build/pdf.worker.min.mjs",
-  import.meta.url
-).toString();
+// Worker setup — you may also copy to /public & point there for stability
+pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.js";
 
 type ChatRole = "user" | "assistant";
 
@@ -18,10 +17,13 @@ export default function DashboardPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
 
-  const [file, setFile] = useState<File | null>(null); // selected PDF
+  const [file, setFile] = useState<File | null>(null);
   const [numPages, setNumPages] = useState<number | null>(null);
   const [pageNumber, setPageNumber] = useState(1);
-  const [messages, setMessages] = useState<{ role: ChatRole; content: string }[]>([]);
+  const [docText, setDocText] = useState(""); // store extracted PDF text
+  const [messages, setMessages] = useState<
+    { role: ChatRole; content: string }[]
+  >([]);
   const [input, setInput] = useState("");
 
   useEffect(() => {
@@ -41,24 +43,34 @@ export default function DashboardPage() {
     setPageNumber(1);
   }
 
+  async function handleFileUpload(f: File) {
+    setFile(f);
+    const text = await extractTextFromPDF(f);
+    setDocText(text);
+    console.log("Extracted PDF text:", text.slice(0, 200) + "...");
+  }
+
   async function handleSendMessage(e: React.FormEvent) {
     e.preventDefault();
     if (!input.trim()) return;
 
     const newMessage = { role: "user" as ChatRole, content: input };
-
     setMessages((prev) => [...prev, newMessage]);
     setInput("");
 
-    // POST messages to /api/chat
+    // POST to /api/chat with both messages AND docText
     const res = await fetch("/api/chat", {
       method: "POST",
-      body: JSON.stringify({ messages: [...messages, newMessage] }),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messages: [...messages, newMessage],
+        context: docText, // include PDF text context
+      }),
     });
 
     if (!res.body) return;
 
-    // Read the streaming response
+    // Streaming reader
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let aiContent = "";
@@ -68,7 +80,7 @@ export default function DashboardPage() {
       if (done) break;
       aiContent += decoder.decode(value, { stream: true });
 
-      // Update AI message incrementally
+      // Update assistant message incrementally
       setMessages((prev) => {
         const updated = [...prev];
         if (updated[updated.length - 1]?.role === "assistant") {
@@ -89,7 +101,10 @@ export default function DashboardPage() {
           <input
             type="file"
             accept="application/pdf"
-            onChange={(e) => setFile(e.target.files?.[0] || null)}
+            onChange={async (e) => {
+              const f = e.target.files?.[0];
+              if (f) await handleFileUpload(f);
+            }}
             className="text-sm text-gray-300"
           />
         </div>
