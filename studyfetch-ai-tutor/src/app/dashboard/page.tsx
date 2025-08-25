@@ -12,6 +12,8 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   import.meta.url
 ).toString();
 
+type ChatRole = "user" | "assistant";
+
 export default function DashboardPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
@@ -19,9 +21,7 @@ export default function DashboardPage() {
   const [file, setFile] = useState<File | null>(null); // selected PDF
   const [numPages, setNumPages] = useState<number | null>(null);
   const [pageNumber, setPageNumber] = useState(1);
-  const [messages, setMessages] = useState<{ role: string; content: string }[]>(
-    []
-  );
+  const [messages, setMessages] = useState<{ role: ChatRole; content: string }[]>([]);
   const [input, setInput] = useState("");
 
   useEffect(() => {
@@ -41,19 +41,44 @@ export default function DashboardPage() {
     setPageNumber(1);
   }
 
-  function handleSendMessage(e: React.FormEvent) {
+  async function handleSendMessage(e: React.FormEvent) {
     e.preventDefault();
     if (!input.trim()) return;
-    setMessages((prev) => [...prev, { role: "user", content: input }]);
+
+    const newMessage = { role: "user" as ChatRole, content: input };
+
+    setMessages((prev) => [...prev, newMessage]);
     setInput("");
 
-    // later this will call API -> LLM response
-    setTimeout(() => {
-      setMessages((prev) => [
-        ...prev,
-        { role: "ai", content: "🤖 AI response placeholder." },
-      ]);
-    }, 500);
+    // POST messages to /api/chat
+    const res = await fetch("/api/chat", {
+      method: "POST",
+      body: JSON.stringify({ messages: [...messages, newMessage] }),
+    });
+
+    if (!res.body) return;
+
+    // Read the streaming response
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let aiContent = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      aiContent += decoder.decode(value, { stream: true });
+
+      // Update AI message incrementally
+      setMessages((prev) => {
+        const updated = [...prev];
+        if (updated[updated.length - 1]?.role === "assistant") {
+          updated[updated.length - 1].content = aiContent;
+        } else {
+          updated.push({ role: "assistant", content: aiContent });
+        }
+        return updated;
+      });
+    }
   }
 
   return (
