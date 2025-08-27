@@ -7,24 +7,39 @@ const openai = createOpenAI({
 
 export async function POST(req: Request) {
   try {
-    // Read messages + PDF context from request body
     const { messages, context } = await req.json();
 
     const result = await streamText({
       model: openai("gpt-4o-mini"),
-
       messages: [
         {
           role: "system",
-          content:
-            "You are an AI tutor. You must base your answers only on the provided PDF content. " +
-            "If the requested information is not in the PDF, say: 'I could not find that information in the document.'",
+          content: `You are an AI tutor. Base your answers strictly on the provided PDF context below. 
+
+When possible:
+1. Provide a natural language answer to the student's question.
+2. After your answer, output a JSON metadata object INSIDE a <metadata> block.
+
+Formats:
+- For one supporting sentence:
+<metadata>
+{"page": <page_number>, "sentence": "<exact sentence copied from PDF>"}
+</metadata>
+
+- For multiple supporting sentences:
+<metadata>
+{"page": <page_number>, "sentences": ["<sentence1>", "<sentence2>", "..."]}
+</metadata>
+
+Copy sentences EXACTLY from the PDF text (do not paraphrase).
+Never invent page numbers.
+If no answer is in the PDF, respond: "I could not find that information in the document."`,
         },
         {
           role: "system",
-          content: `Here is the extracted PDF content:\n\n${context}`,
+          content: `Here is the extracted PDF text:\n\n${context}`,
         },
-        ...messages, // include conversation history (user + assistant so far)
+        ...messages,
       ],
     });
 
