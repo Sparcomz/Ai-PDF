@@ -80,7 +80,7 @@ export default function DashboardPage() {
       });
     }
 
-    // ✅ Parse <metadata> block AFTER streaming finishes
+    // Parse <metadata> block AFTER streaming finishes
     try {
       const metadataMatch = aiContent.match(/<metadata>([\s\S]*?)<\/metadata>/);
       if (metadataMatch) {

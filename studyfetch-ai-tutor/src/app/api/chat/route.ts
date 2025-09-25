@@ -45,7 +45,7 @@ If no answer is in the PDF, respond: "I could not find that information in the d
 
     return result.toTextStreamResponse();
   } catch (error: any) {
-    console.error("❌ Error in /api/chat:", error);
+    console.error("Error in /api/chat:", error);
     return new Response(
       JSON.stringify({ error: "Failed to process chat request" }),
       { status: 500, headers: { "Content-Type": "application/json" } }
